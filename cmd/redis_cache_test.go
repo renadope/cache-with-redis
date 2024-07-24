@@ -209,6 +209,84 @@ func testGetOnMissing(t *testing.T, env *testEnv) {
 		}
 	})
 }
+func testGetOnMissingWithSingleFlight(t *testing.T, env *testEnv) {
+	t.Helper()
+	t.Run("KeyNotExist_OnMissingSucceeds", func(t *testing.T) {
+		key := "missing_key"
+		var result string
+		onMissing := func() (any, error) {
+			return "generated_value", nil
+		}
+		err := env.cash.GetWithOnMissingWithSingleFlight(env.ctx, key, &result, onMissing)
+		if err != nil {
+			t.Errorf("Get with on missing failed")
+		}
+		if result != "generated_value" {
+			t.Errorf("Expected 'generated_value', got '%s'", result)
+		}
+		var r2 string
+		err = env.cash.Get(env.ctx, key, &r2)
+		if err != nil {
+			t.Errorf("error retrieving fromc cash")
+		}
+		if r2 != "generated_value" {
+			t.Errorf("Expected 'generated_value', got '%s'", result)
+		}
+
+	})
+
+	t.Run("KeyNotExist, On missing fails", func(t *testing.T) {
+		key := "missing_key2"
+		var result string
+		onMissing := func() (any, error) {
+			return nil, fmt.Errorf("failed to generate value")
+		}
+		err := env.cash.GetWithOnMissingWithSingleFlight(env.ctx, key, &result, onMissing)
+		if err == nil {
+			t.Errorf("Error expected, onMissing returned nil error")
+		}
+
+		var r2 string
+		err = env.cash.Get(env.ctx, key, &r2)
+		if err == nil {
+			t.Errorf("should receive an error here, key should not be in cache")
+		}
+
+	})
+	t.Run("KeyExists", func(t *testing.T) {
+		key := "existing key"
+		var result string
+		var initial = "619"
+		err := env.cash.Set(env.ctx, key, initial, 1*time.Minute)
+		if err != nil {
+			t.Errorf("error setting cache with value:%s", initial)
+		}
+
+		onMissing := func() (any, error) {
+			return "booyaka should not be used", nil
+		}
+
+		err = env.cash.GetWithOnMissingWithSingleFlight(env.ctx, key, &result, onMissing)
+		if err != nil {
+			t.Errorf("error retrieving fromc cash")
+		}
+		if result != initial {
+			t.Errorf("retrieved wrong value from cacha")
+		}
+	})
+
+	t.Run("OnMissingDifferentType", func(t *testing.T) {
+		key := "type_mismatch_key"
+		var res string
+		onMissingFunc := func() (any, error) {
+			return 42, nil
+		}
+		err := env.cash.GetWithOnMissingWithSingleFlight(env.ctx, key, res, onMissingFunc)
+		if err == nil {
+			t.Errorf("expected error due to type mismatch, got nil")
+		}
+	})
+}
 func testExists(t *testing.T, env *testEnv) {
 	t.Helper()
 	t.Run("Key existence tests", func(t *testing.T) {
@@ -425,6 +503,9 @@ func TestGetNonExistent(t *testing.T) {
 }
 func TestGetOnMissing(t *testing.T) {
 	runTestWithAllImages(t, testGetOnMissing)
+}
+func TestGetOnMissingWithSingleFlight(t *testing.T) {
+	runTestWithAllImages(t, testGetOnMissingWithSingleFlight)
 }
 func TestDeleteKeys(t *testing.T) {
 	runTestWithAllImages(t, testDeleteKeys)
