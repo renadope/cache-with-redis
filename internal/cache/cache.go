@@ -165,7 +165,7 @@ func (c *RedisCache) GetWithOnMissingWithSingleFlight(ctx context.Context, key s
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal new value: %w", err)
 			}
-			set, err := c.client.Set(ctx, key, jsonVal, c.defaultExpiration).Result()
+			_, err = c.client.Set(ctx, key, jsonVal, c.defaultExpiration).Result()
 			if err != nil {
 				return nil, fmt.Errorf("failed to set new value in cache: %w", err)
 			}
