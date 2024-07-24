@@ -24,7 +24,7 @@ type Cache interface {
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
 	Get(ctx context.Context, key string, dest any) error
 	GetWithOnMissing(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error
-	GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error
+	GetWithOnMissingWithSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error
 	Exists(ctx context.Context, keys ...string) (map[string]bool, error)
 	FlushAll(ctx context.Context) error
 	FlushByPattern(ctx context.Context, pattern string) error
@@ -139,16 +139,7 @@ func (c *RedisCache) GetWithOnMissing(ctx context.Context, key string, dest any,
 	return nil
 }
 
-const getSetScript = `
-local value = redis.call('GET', KEYS[1])
-if not value then
-    value = ARGV[1]
-    redis.call('SET', KEYS[1], value, 'EX', ARGV[2])
-end
-return value
-`
-
-func (c *RedisCache) GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error {
+func (c *RedisCache) GetWithOnMissingWithSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error {
 	if c.checkForEmptyString(key) {
 		return ErrEmptyKey
 	}
@@ -158,21 +149,10 @@ func (c *RedisCache) GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key
 
 	var jsonVal []byte
 	var err error
-	var getSetCmd = redis.NewScript(getSetScript)
 
 	v, err, _ := c.sfGroup.Do(key, func() (interface{}, error) {
-		result, err := getSetCmd.Run(
-			ctx,
-			c.client,
-			[]string{key},
-			"",
-			c.defaultExpiration.Seconds(),
-		).Result()
-		if err != nil {
-			return nil, fmt.Errorf("error executing Redis script: %w", err)
-		}
-		value, ok := result.(string)
-		if !ok || value == "" {
+		val, err := c.client.Get(ctx, key).Result()
+		if errors.Is(err, redis.Nil) {
 			c.Logger.Info("cache miss, going to onMissingFunc", slog.String("key", key))
 			if onMissingFunc == nil {
 				return nil, fmt.Errorf("key not found and no onMissing function provided")
@@ -185,22 +165,31 @@ func (c *RedisCache) GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal new value: %w", err)
 			}
-			_, err = getSetCmd.Run(
-				ctx,
-				c.client,
-				[]string{key},
-				jsonVal,
-				c.defaultExpiration.Seconds(),
-			).Result()
+			set, err := c.client.SetNX(ctx, key, jsonVal, c.defaultExpiration).Result()
 			if err != nil {
 				return nil, fmt.Errorf("failed to set new value in cache: %w", err)
 			}
-		} else if value != "" && ok {
-			jsonVal = []byte(value)
+			if !set {
+				c.Logger.Warn("value was already set",
+					slog.String("key", key))
+				val, err = c.client.Get(ctx, key).Result()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get value after SetNX: %w", err)
+				}
+				if val != string(jsonVal) {
+					c.Logger.Info("calculated value differs from cached value",
+						slog.String("key", key),
+						slog.String("calculated", string(jsonVal)),
+						slog.String("cached", val))
+				}
+				return []byte(val), nil
+			}
+			return jsonVal, nil
+		} else if err != nil {
+			return nil, fmt.Errorf("error executing Redis script: %w", err)
 		}
-		return jsonVal, nil
+		return []byte(val), nil
 	})
-
 	if err != nil {
 		return err
 	}
