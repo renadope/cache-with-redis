@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	sf "golang.org/x/sync/singleflight"
 	"log/slog"
 	"os"
 	"strings"
@@ -23,6 +24,7 @@ type Cache interface {
 	Set(ctx context.Context, key string, value any, expiration time.Duration) error
 	Get(ctx context.Context, key string, dest any) error
 	GetWithOnMissing(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error
+	GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error
 	Exists(ctx context.Context, keys ...string) (map[string]bool, error)
 	FlushAll(ctx context.Context) error
 	FlushByPattern(ctx context.Context, pattern string) error
@@ -32,6 +34,7 @@ type RedisCache struct {
 	client            *redis.Client
 	defaultExpiration time.Duration
 	Logger            *slog.Logger
+	sfGroup           sf.Group
 }
 
 func NewCache(client *redis.Client, defaultExpiration time.Duration, logger *slog.Logger) *RedisCache {
@@ -51,6 +54,7 @@ func NewCache(client *redis.Client, defaultExpiration time.Duration, logger *slo
 		client:            client,
 		defaultExpiration: defaultExpiration,
 		Logger:            logger,
+		sfGroup:           sf.Group{},
 	}
 	c.RunPeriodicHealthChecks(30 * time.Second)
 	return c
@@ -133,6 +137,75 @@ func (c *RedisCache) GetWithOnMissing(ctx context.Context, key string, dest any,
 		return fmt.Errorf("error unmarshaling data:%w", err)
 	}
 	return nil
+}
+
+const getSetScript = `
+local value = redis.call('GET', KEYS[1])
+if not value then
+    value = ARGV[1]
+    redis.call('SET', KEYS[1], value, 'EX', ARGV[2])
+end
+return value
+`
+
+func (c *RedisCache) GetWithOnMissingLuaAndSingleFlight(ctx context.Context, key string, dest any, onMissingFunc onMissingFunc) error {
+	if c.checkForEmptyString(key) {
+		return ErrEmptyKey
+	}
+	if dest == nil {
+		return ErrInvalidDestination
+	}
+
+	var jsonVal []byte
+	var err error
+	var getSetCmd = redis.NewScript(getSetScript)
+
+	v, err, _ := c.sfGroup.Do(key, func() (interface{}, error) {
+		result, err := getSetCmd.Run(
+			ctx,
+			c.client,
+			[]string{key},
+			"",
+			c.defaultExpiration.Seconds(),
+		).Result()
+		if err != nil {
+			return nil, fmt.Errorf("error executing Redis script: %w", err)
+		}
+		value, ok := result.(string)
+		if !ok || value == "" {
+			c.Logger.Info("cache miss, going to onMissingFunc", slog.String("key", key))
+			if onMissingFunc == nil {
+				return nil, fmt.Errorf("key not found and no onMissing function provided")
+			}
+			newVal, onMissingErr := onMissingFunc()
+			if onMissingErr != nil {
+				return nil, fmt.Errorf("onMissing function failed: %w", onMissingErr)
+			}
+			jsonVal, err = json.Marshal(newVal)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal new value: %w", err)
+			}
+			_, err = getSetCmd.Run(
+				ctx,
+				c.client,
+				[]string{key},
+				jsonVal,
+				c.defaultExpiration.Seconds(),
+			).Result()
+			if err != nil {
+				return nil, fmt.Errorf("failed to set new value in cache: %w", err)
+			}
+		} else if value != "" && ok {
+			jsonVal = []byte(value)
+		}
+		return jsonVal, nil
+	})
+
+	if err != nil {
+		return err
+	}
+	jsonVal = v.([]byte)
+	return json.Unmarshal(jsonVal, dest)
 }
 
 func (c *RedisCache) FlushAll(ctx context.Context) error {
