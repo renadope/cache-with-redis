@@ -37,6 +37,7 @@ func main() {
 		PoolSize:     100,
 		MinIdleConns: 20,
 	}, app.Logger)
+
 	if err != nil || redisConn == nil {
 		log.Fatalf("failed to connect to redis")
 	}

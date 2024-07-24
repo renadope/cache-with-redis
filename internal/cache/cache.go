@@ -165,25 +165,26 @@ func (c *RedisCache) GetWithOnMissingWithSingleFlight(ctx context.Context, key s
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal new value: %w", err)
 			}
-			set, err := c.client.SetNX(ctx, key, jsonVal, c.defaultExpiration).Result()
+			set, err := c.client.Set(ctx, key, jsonVal, c.defaultExpiration).Result()
 			if err != nil {
 				return nil, fmt.Errorf("failed to set new value in cache: %w", err)
 			}
-			if !set {
-				c.Logger.Warn("value was already set",
-					slog.String("key", key))
-				val, err = c.client.Get(ctx, key).Result()
-				if err != nil {
-					return nil, fmt.Errorf("failed to get value after SetNX: %w", err)
-				}
-				if val != string(jsonVal) {
-					c.Logger.Info("calculated value differs from cached value",
-						slog.String("key", key),
-						slog.String("calculated", string(jsonVal)),
-						slog.String("cached", val))
-				}
-				return []byte(val), nil
-			}
+			//if using SetNX, other wise this will raise a type error
+			//if !set {
+			//	c.Logger.Warn("value was already set",
+			//		slog.String("key", key))
+			//	val, err = c.client.Get(ctx, key).Result()
+			//	if err != nil {
+			//		return nil, fmt.Errorf("failed to get value after SetNX: %w", err)
+			//	}
+			//	if val != string(jsonVal) {
+			//		c.Logger.Info("calculated value differs from cached value",
+			//			slog.String("key", key),
+			//			slog.String("calculated", string(jsonVal)),
+			//			slog.String("cached", val))
+			//	}
+			//	return []byte(val), nil
+			//}
 			return jsonVal, nil
 		} else if err != nil {
 			return nil, fmt.Errorf("error executing Redis script: %w", err)
