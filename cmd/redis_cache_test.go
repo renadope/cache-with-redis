@@ -22,7 +22,7 @@ type testEnv struct {
 	cash           *cache.RedisCache
 }
 
-var testImages = []struct {
+var RedisTestImages = []struct {
 	name  string
 	image string
 }{
@@ -431,8 +431,8 @@ func testDeleteKeys(t *testing.T, env *testEnv) {
 func runTestWithAllImages(t *testing.T, testFunc func(t *testing.T, env *testEnv)) {
 
 	var wg sync.WaitGroup
-	containerRequests := make([]testcontainers.GenericContainerRequest, len(testImages))
-	for i, tc := range testImages {
+	containerRequests := make([]testcontainers.GenericContainerRequest, len(RedisTestImages))
+	for i, tc := range RedisTestImages {
 		validName := strings.ReplaceAll(tc.name, " ", "_")
 		validName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`).ReplaceAllString(validName, "")
 
