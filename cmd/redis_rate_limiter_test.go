@@ -7,6 +7,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"log"
+	"math"
 	"redislayer/internal/limiter"
 	"regexp"
 	"strings"
@@ -155,7 +156,7 @@ func runTestWithAllRedisImages(t *testing.T, testFunc func(t *testing.T, e *env)
 func testBasicRateLimit(t *testing.T, e *env) {
 	t.Helper()
 	//ensure test doesn't hang indefinitely in case of bad math
-	ctx, cancel := context.WithTimeout(e.ctx, 1*time.Minute)
+	ctx, cancel := context.WithTimeout(e.ctx, 2*time.Minute)
 	t.Cleanup(func() {
 		cancel()
 	})
@@ -163,14 +164,40 @@ func testBasicRateLimit(t *testing.T, e *env) {
 		name        string
 		limit       int
 		window      time.Duration
-		delay       time.Duration
+		delay       func(int) time.Duration
 		numRequests int
 		expected    int
 	}{
-		{name: "T1", limit: 10, window: 1 * time.Second, delay: 10 * time.Millisecond, numRequests: 15, expected: 10},
-		{name: "T2", limit: 20, window: 10 * time.Second, delay: 100 * time.Millisecond, numRequests: 100, expected: 25},
-		{name: "T3", limit: 1, window: 2999 * time.Millisecond, delay: 1 * time.Millisecond, numRequests: 100, expected: 50},
-		{name: "T4", limit: 1, window: 29 * time.Millisecond, delay: 1 * time.Millisecond, numRequests: 100, expected: 50},
+		{name: "T1", limit: 10, window: 1 * time.Second, delay: func(i int) time.Duration { return 10 * time.Millisecond }, numRequests: 15, expected: 10},
+		{name: "T2", limit: 20, window: 10 * time.Second, delay: func(i int) time.Duration { return 100 * time.Millisecond }, numRequests: 100, expected: 25},
+		{name: "T3", limit: 1, window: 2999 * time.Millisecond, delay: func(i int) time.Duration { return 1 * time.Millisecond }, numRequests: 100, expected: 1},
+		{name: "T3.1", limit: 1, window: 2975 * time.Millisecond, delay: func(i int) time.Duration { return 1 * time.Millisecond }, numRequests: 100, expected: 1},
+		{name: "T3.2", limit: 1, window: 1397 * time.Millisecond, delay: func(i int) time.Duration { return 1 * time.Millisecond }, numRequests: 100, expected: 1},
+		{name: "T4", limit: 1, window: 30 * time.Millisecond, delay: func(i int) time.Duration { return 1 * time.Millisecond }, numRequests: 100, expected: 10},
+		{name: "T5", limit: 100, window: 5 * time.Second, delay: func(i int) time.Duration { return 13 * time.Millisecond }, numRequests: 100, expected: 100},
+		{name: "T6", limit: 1000, window: 1000 * time.Second, delay: func(i int) time.Duration { return 1 * time.Second }, numRequests: 10, expected: 10},
+		{name: "T7", limit: 300, window: 10 * time.Second, delay: func(i int) time.Duration { return 1 * time.Microsecond }, numRequests: 10000, expected: 300},
+		{name: "T8", limit: 300, window: 5 * time.Second, delay: func(i int) time.Duration { return 100 * time.Millisecond }, numRequests: 100, expected: 98},
+		{name: "T9", limit: 10, window: 1 * time.Second, delay: func(i int) time.Duration {
+			switch {
+			case i < 50:
+				return 1 * time.Millisecond
+			case i < 100:
+				return 50 * time.Millisecond
+			case i < 200:
+				return 5 * time.Millisecond
+			case i < 300:
+				return 10 * time.Millisecond
+			case i < 400:
+				return 1 * time.Millisecond
+			case i < 600:
+				return 100 * time.Millisecond
+			case i < 800:
+				return 1 * time.Millisecond
+			default:
+				return 20 * time.Millisecond
+			}
+		}, numRequests: 1000, expected: 300},
 	}
 	for _, scenario := range scenarios {
 		select {
@@ -189,7 +216,7 @@ func testRateLimitScenario(t *testing.T, e *env, ctx context.Context, scenario s
 	name        string
 	limit       int
 	window      time.Duration
-	delay       time.Duration
+	delay       func(int) time.Duration
 	numRequests int
 	expected    int
 }) {
@@ -207,25 +234,34 @@ func testRateLimitScenario(t *testing.T, e *env, ctx context.Context, scenario s
 				limiter.WithWindow(scenario.window),
 			)
 			if allowed {
-				t.Log("Allowed")
 				allowedCount++
 			}
 			if err != nil {
 				t.Fatalf("Error in rate limiting: %v", err)
 			}
-			time.Sleep(scenario.delay)
+			time.Sleep(scenario.delay(i))
 		}
-		if allowedCount > scenario.expected {
-			diff := allowedCount - scenario.expected
-			percentageOver := float64(diff) / float64(scenario.expected) * 100
-
-			if percentageOver >= 100 {
-				t.Errorf("something went wrong in the rate limiter or your calculation buddy")
-			}
-			t.Errorf("the allowedCount:%d is greater than the expected value:%d ", allowedCount, scenario.expected)
-		}
-		t.Logf("allowedCount:%d, expected value:%d ", allowedCount, scenario.expected)
 	}
+	allowedPercentage := float64(allowedCount) / float64(scenario.numRequests) * 100
+	expectedPercentage := float64(scenario.expected) / float64(scenario.numRequests) * 100
+	tolerance := 5.0
+
+	diff := math.Abs(allowedPercentage - expectedPercentage)
+	if diff > tolerance {
+		t.Errorf("Allowance outside tolerance range. Got: %d (%.2f%%), Expected: %d (%.2f%%)",
+			allowedCount, allowedPercentage, scenario.expected, expectedPercentage)
+	} else {
+		t.Logf("Allowance within tolerance. Got: %d (%.2f%%), Expected: %d (%.2f%%)",
+			allowedCount, allowedPercentage, scenario.expected, expectedPercentage)
+	}
+
+	t.Logf(
+		"testName:%s,allowedCount:%d, approx expected value:%d, numRequests sent:%d ",
+		scenario.name,
+		allowedCount,
+		scenario.expected,
+		scenario.numRequests,
+	)
 
 }
 func TestBasicRateLimit(t *testing.T) {
