@@ -149,7 +149,6 @@ func (c *RedisCache) GetWithOnMissingWithSingleFlight(ctx context.Context, key s
 
 	var jsonVal []byte
 	var err error
-
 	v, err, _ := c.sfGroup.Do(key, func() (interface{}, error) {
 		val, err := c.client.Get(ctx, key).Result()
 		if errors.Is(err, redis.Nil) {
