@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -105,7 +106,7 @@ func runTestWithAllRedisImages(t *testing.T, testFunc func(t *testing.T, e *env)
 				Image:        tc.image,
 				ExposedPorts: []string{"6379/tcp"},
 				WaitingFor:   wait.ForLog("Ready to accept connections"),
-				Name:         validName,
+				Name:         validName + "rate_lim",
 			},
 		}
 	}
@@ -264,6 +265,94 @@ func testRateLimitScenario(t *testing.T, e *env, ctx context.Context, scenario s
 	)
 
 }
+
+func testConcurrentRateLimiting(t *testing.T, e *env) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(e.ctx, 1*time.Minute)
+	t.Cleanup(func() {
+		cancel()
+	})
+
+	type durationFunc = func(int64) time.Duration
+	numRequests := 100
+	requestsChan := make(chan int, numRequests)
+	resultsChan := make(chan bool, numRequests)
+	errorChan := make(chan error, numRequests)
+	var delayMS durationFunc = func(i int64) time.Duration {
+		return time.Duration(i) * time.Millisecond
+	}
+
+	go func() {
+		for i := 0; i < numRequests; i++ {
+			requestsChan <- i
+			time.Sleep(delayMS(10))
+		}
+		close(requestsChan)
+	}()
+
+	var wg sync.WaitGroup
+	var requestsCounter atomic.Int64
+	numWorkers := 100
+	for i := 0; i < numWorkers; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("test timed out")
+		default:
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				for range requestsChan {
+					allowed, err := e.limiter.AllowUsingSlidingWindowLogWithScript(
+						context.Background(),
+						"concurrent-testing",
+						limiter.WithLimit(100),
+						limiter.WithWindow(10*time.Second),
+						limiter.WithDefaultPrefix(fmt.Sprintf("routine:%d", i)),
+					)
+					requestsCounter.Add(1)
+					resultsChan <- allowed
+					if err != nil {
+						errorChan <- err
+					}
+				}
+			}(i)
+		}
+	}
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+		close(errorChan)
+	}()
+	wg.Wait()
+
+	t.Logf("total requests served:%d", requestsCounter.Load())
+	allowed := 0
+	denied := 0
+	for result := range resultsChan {
+		if result {
+			allowed++
+		} else {
+			denied++
+		}
+	}
+	ec := 0
+	for er := range errorChan {
+		ec++
+		log.Println(er)
+	}
+	log.Printf(
+		"Test completed. Allowed: %d, Denied: %d, Total Requests: %d, TotalErrors:%d",
+		allowed,
+		denied,
+		numRequests,
+		ec,
+	)
+}
 func TestBasicRateLimit(t *testing.T) {
 	runTestWithAllRedisImages(t, testBasicRateLimit)
+}
+
+func TestConcurrentRateLimiting(t *testing.T) {
+	runTestWithAllRedisImages(t, testConcurrentRateLimiting)
 }

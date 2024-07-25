@@ -286,7 +286,7 @@ func (c *RedisCache) RunPeriodicHealthChecks(interval time.Duration) {
 		for {
 			select {
 			case <-ticker.C:
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				err := c.HealthCheck(ctx)
 				if err != nil {
 					c.Logger.Error("should really do something about this buddy")

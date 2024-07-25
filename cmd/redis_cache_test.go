@@ -441,7 +441,7 @@ func runTestWithAllImages(t *testing.T, testFunc func(t *testing.T, env *testEnv
 				Image:        tc.image,
 				ExposedPorts: []string{"6379/tcp"},
 				WaitingFor:   wait.ForLog("Ready to accept connections"),
-				Name:         validName,
+				Name:         validName + "_" + "cache_test",
 			},
 		}
 
