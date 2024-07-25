@@ -278,6 +278,10 @@ local now = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
 local limit = tonumber(ARGV[3])
 
+now = math.floor(now)
+window = math.floor(window)
+limit = math.floor(limit)
+
 -- Remove old entries
 redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
 
@@ -307,8 +311,8 @@ func (rl *RateLimiterSlidingWindowLog) AllowUsingSlidingWindowLogWithScript(
 	}
 
 	key = fmt.Sprintf("%s:%s", config.Prefix, key)
-	now := time.Now().UnixMilli()
-	windowMS := config.Window.Milliseconds()
+	now := time.Now().UnixNano()
+	windowMS := config.Window.Nanoseconds()
 
 	result, err := rl.client.Eval(
 		ctx,
@@ -316,7 +320,7 @@ func (rl *RateLimiterSlidingWindowLog) AllowUsingSlidingWindowLogWithScript(
 		[]string{key},
 		now,
 		windowMS,
-		config.Limit+config.Burst,
+		int64(config.Limit+config.Burst),
 	).Result()
 	if err != nil {
 		return false, fmt.Errorf("failed to execute rate limiter script: %w", err)

@@ -154,7 +154,7 @@ func runTestWithAllRedisImages(t *testing.T, testFunc func(t *testing.T, e *env)
 
 func testBasicRateLimit(t *testing.T, e *env) {
 	t.Helper()
-	//ensure test doesn't hang indefintely
+	//ensure test doesn't hang indefinitely in case of bad math
 	ctx, cancel := context.WithTimeout(e.ctx, 1*time.Minute)
 	t.Cleanup(func() {
 		cancel()
@@ -167,7 +167,10 @@ func testBasicRateLimit(t *testing.T, e *env) {
 		numRequests int
 		expected    int
 	}{
-		{name: "Basic: 10Req/s", limit: 10, window: 1 * time.Second, delay: 10 * time.Millisecond, numRequests: 15, expected: 10},
+		{name: "T1", limit: 10, window: 1 * time.Second, delay: 10 * time.Millisecond, numRequests: 15, expected: 10},
+		{name: "T2", limit: 20, window: 10 * time.Second, delay: 100 * time.Millisecond, numRequests: 100, expected: 25},
+		{name: "T3", limit: 1, window: 2999 * time.Millisecond, delay: 1 * time.Millisecond, numRequests: 100, expected: 50},
+		{name: "T4", limit: 1, window: 29 * time.Millisecond, delay: 1 * time.Millisecond, numRequests: 100, expected: 50},
 	}
 	for _, scenario := range scenarios {
 		select {
@@ -213,6 +216,12 @@ func testRateLimitScenario(t *testing.T, e *env, ctx context.Context, scenario s
 			time.Sleep(scenario.delay)
 		}
 		if allowedCount > scenario.expected {
+			diff := allowedCount - scenario.expected
+			percentageOver := float64(diff) / float64(scenario.expected) * 100
+
+			if percentageOver >= 100 {
+				t.Errorf("something went wrong in the rate limiter or your calculation buddy")
+			}
 			t.Errorf("the allowedCount:%d is greater than the expected value:%d ", allowedCount, scenario.expected)
 		}
 		t.Logf("allowedCount:%d, expected value:%d ", allowedCount, scenario.expected)
