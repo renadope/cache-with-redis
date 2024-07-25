@@ -75,7 +75,7 @@ func setupRedisTestEnvFromContainer(t *testing.T, container testcontainers.Conta
 	//clear the redis before running tests
 	err = redisClient.FlushAll(ctx).Err()
 	if err != nil {
-		t.Fatalf("could not fliush redis")
+		t.Fatalf("could not flush redis")
 	}
 
 	return &env{
@@ -88,6 +88,12 @@ func setupRedisTestEnvFromContainer(t *testing.T, container testcontainers.Conta
 
 func teardownRedisTestEnv(t *testing.T, e *env) {
 	t.Helper()
+	if e.redisClient != nil {
+		err := e.redisClient.Close()
+		if err != nil {
+			t.Fatalf("error closing client")
+		}
+	}
 	if e.redisContainer != nil {
 		err := e.redisContainer.Terminate(e.ctx)
 		if err != nil {
@@ -106,7 +112,7 @@ func runTestWithAllRedisImages(t *testing.T, testFunc func(t *testing.T, e *env)
 				Image:        tc.image,
 				ExposedPorts: []string{"6379/tcp"},
 				WaitingFor:   wait.ForLog("Ready to accept connections"),
-				Name:         validName + "rate_lim",
+				Name:         validName + "_" + "rate_lim",
 			},
 		}
 	}

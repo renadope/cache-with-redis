@@ -87,6 +87,10 @@ func setupTestEnvFromContainer(t *testing.T, container testcontainers.Container)
 
 func teardownTestEnv(t *testing.T, env *testEnv) {
 	t.Helper()
+	err := env.redisClient.Close()
+	if err != nil {
+		t.Fatalf("error closing redis client")
+	}
 	if env.redisContainer != nil {
 		err := env.redisContainer.Terminate(env.ctx)
 		if err != nil {
@@ -478,11 +482,11 @@ func runTestWithAllImages(t *testing.T, testFunc func(t *testing.T, env *testEnv
 			}
 
 			t.Run(strings.TrimPrefix(name, "/"), func(t *testing.T) {
-				env := setupTestEnvFromContainer(t, container)
+				e := setupTestEnvFromContainer(t, container)
 				t.Cleanup(func() {
-					teardownTestEnv(t, env)
+					teardownTestEnv(t, e)
 				})
-				testFunc(t, env)
+				testFunc(t, e)
 			})
 			orderChan <- name
 		}(container)
