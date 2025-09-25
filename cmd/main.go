@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/redis/go-redis/v9"
 	"log"
 	"log/slog"
 	"os"
 	redis_helpers "redislayer/internal/redis-helpers"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type application struct {

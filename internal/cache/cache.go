@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
-	sf "golang.org/x/sync/singleflight"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+	sf "golang.org/x/sync/singleflight"
 )
 
 var (

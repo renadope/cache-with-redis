@@ -3,11 +3,12 @@ package redis_helpers
 import (
 	"context"
 	"fmt"
-	"github.com/redis/go-redis/v9"
 	"log/slog"
 	"math/rand"
 	"net"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type LoggingHook struct {
