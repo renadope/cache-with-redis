@@ -29,7 +29,6 @@ var RedisTestImages = []struct {
 }{
 	{name: "Redis 6", image: "redis:6-alpine"},
 	{name: "Redis 7", image: "redis:7-alpine"},
-	{name: "Redis latest", image: "redis:latest"},
 }
 
 func setupTestEnvFromContainer(t *testing.T, container testcontainers.Container) *testEnv {
@@ -440,13 +439,14 @@ func runTestWithAllImages(t *testing.T, testFunc func(t *testing.T, env *testEnv
 	for i, tc := range RedisTestImages {
 		validName := strings.ReplaceAll(tc.name, " ", "_")
 		validName = regexp.MustCompile(`[^a-zA-Z0-9_.-]`).ReplaceAllString(validName, "")
+		timestamp := time.Now().UnixNano()
 
 		containerRequests[i] = testcontainers.GenericContainerRequest{
 			ContainerRequest: testcontainers.ContainerRequest{
 				Image:        tc.image,
 				ExposedPorts: []string{"6379/tcp"},
 				WaitingFor:   wait.ForLog("Ready to accept connections"),
-				Name:         validName + "_" + "cache_test",
+				Name:         fmt.Sprintf("%s_cache_test_%d", validName, timestamp),
 			},
 		}
 

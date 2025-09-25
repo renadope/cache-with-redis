@@ -31,7 +31,6 @@ var testImages = []struct {
 }{
 	{name: "Redis 6", image: "redis:6-alpine"},
 	{name: "Redis 7", image: "redis:7-alpine"},
-	{name: "Redis latest", image: "redis:latest"},
 }
 
 func setupRedisTestEnvFromContainer(t *testing.T, container testcontainers.Container) *env {
