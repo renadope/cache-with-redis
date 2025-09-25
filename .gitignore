@@ -1,0 +1,140 @@
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vim/
+.emacs.d/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.cache
+*.pid
+*.seed
+*.pid.lock
+
+# Environment and configuration
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.envrc
+config.local.*
+
+# Dependencies and package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+*.egg-info/
+dist/
+build/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.logs
+target/
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Ruby
+*.gem
+.bundle/
+vendor/bundle/
+.byebug_history
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.test
+vendor/
+
+# Rust
+Cargo.lock
+
+# Build outputs and artifacts
+out/
+*.min.js
+*.min.css
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+ Large media files (optional - uncomment if needed)
+ *.mp4
+ *.avi
+ *.mov
+ *.wmv
+ *.flv
+ *.webm
+ *.mp3
+ *.wav
+ *.flac
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Local development
+.local/
+.tmp/
+tmp/
+db-data
