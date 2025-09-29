@@ -4,7 +4,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	redis_helpers "redislayer/internal/redis-helpers"
+	redishelpers "redislayer/internal/redishelpers"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -21,7 +21,7 @@ func main() {
 	app.Logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
-	redisConn, err := redis_helpers.NewRedisClient(&redis.Options{
+	redisConn, err := redishelpers.NewRedisClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
 		DB:       0,
