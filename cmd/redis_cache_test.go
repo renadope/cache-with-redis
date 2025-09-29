@@ -518,6 +518,3 @@ func TestDeleteKeys(t *testing.T) {
 func TestExists(t *testing.T) {
 	runTestWithAllImages(t, testExists)
 }
-
-/*If you haven't already, consider adding tests for concurrent access to your cache.
-You could add some chaos testing (e.g., simulating network issues) to ensure your cache behaves correctly under adverse conditions.*/
